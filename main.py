@@ -56,7 +56,7 @@ async def scheduler():
 @app.on_event("startup")
 async def startup():
     asyncio.create_task(WSRunner(router).run())
-    asyncio.create_task(run_mexc())
+    asyncio.create_task(run_mexc(router))
     asyncio.create_task(scheduler())
 
 if __name__ == "__main__":
