@@ -2,10 +2,9 @@ import asyncio
 import pandas as pd
 from datetime import datetime, timezone
 from binance import AsyncClient, BinanceSocketManager
-from indicators import rsi, ema, vwap, vwap_deviation_bands, liquidity_sweep
+from indicators import rsi, ema, vwap, vwap_deviation_bands, vwap, liquidity_sweep
 from config import settings
 from alert_router import AlertRouter
-
 
 class WSRunner:
     def _init_(self, router: AlertRouter):
@@ -18,10 +17,8 @@ class WSRunner:
         client = await AsyncClient.create()
         bsm = BinanceSocketManager(client)
         streams = []
-
         for c in [s.strip().upper() for s in settings.coins]:
             streams.append(f"{c}{settings.base}@kline_1m".lower())
-
         ms = bsm.multiplex_socket(streams)
         cache = {}
 
