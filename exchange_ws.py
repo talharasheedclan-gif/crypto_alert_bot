@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 from binance import AsyncClient, BinanceSocketManager
 from indicators import rsi, ema, vwap, vwap_deviation_bands, vwap, liquidity_sweep
 from config import settings
-from .alert_router import AlertRouter
+from alert_router import AlertRouter
 
 class WSRunner:
     def __init__(self, router: AlertRouter):
