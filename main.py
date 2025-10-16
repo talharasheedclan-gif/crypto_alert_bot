@@ -128,7 +128,7 @@ async def startup():
 # Local run (when not using uvicorn CLI)
 # ------------------------------------------------------------
 
-if _name_ == "_main_":
+if __name__ == "__main__":
     import uvicorn
     uvicorn.run(
         "main:app",
