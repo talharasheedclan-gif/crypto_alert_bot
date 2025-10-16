@@ -4,7 +4,7 @@ from typing import Optional
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
-from exchange_ws import ExchangeWS
+from ws_client import ExchangeWS
 
 logging.basicConfig(
     level=os.getenv("LOG_LEVEL", "INFO"),
