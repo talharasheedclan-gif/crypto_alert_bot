@@ -1,6 +1,5 @@
-import asyncio
-import json
-import logging
+# exchange_ws.py
+import asyncio, json, logging
 from typing import Optional
 import websockets
 
@@ -16,7 +15,6 @@ class ExchangeWS:
         self.connected: bool = False
 
     async def run(self):
-        """Main loop: connect, consume, and auto-reconnect on errors."""
         while not self._stop.is_set():
             try:
                 log.info(f"Connecting to {self.url} ...")
@@ -24,16 +22,10 @@ class ExchangeWS:
                     self._ws = ws
                     self.connected = True
                     log.info("WebSocket connected.")
-
                     await self._on_open()
-
-                    consumer = asyncio.create_task(self._consume(), name="ws-consumer")
-                    await self._stop.wait()
-                    consumer.cancel()
-                    try:
-                        await consumer
-                    except asyncio.CancelledError:
-                        pass
+                    while not self._stop.is_set():
+                        msg = await ws.recv()
+                        await self._on_message(msg)
             except (OSError, websockets.WebSocketException) as e:
                 self.connected = False
                 log.warning(f"WS error: {e!r}. Reconnecting in {self.reconnect_delay}s...")
@@ -42,30 +34,15 @@ class ExchangeWS:
                 self.connected = False
                 self._ws = None
 
-    async def _consume(self):
-        """Receive messages and dispatch."""
-        assert self._ws is not None
-        try:
-            async for message in self._ws:
-                await self._on_message(message)
-        except asyncio.CancelledError:
-            raise
-        except Exception as e:
-            log.error(f"Consumer crashed: {e!r}")
-
     async def _on_open(self):
-        """Called after connect. Customize subscription here."""
-        if self._ws is None:
-            return
-        hello = {"type": "hello", "msg": "connected"}
+        if self._ws is None: return
         try:
-            await self._ws.send(json.dumps(hello))
+            await self._ws.send(json.dumps({"type":"hello","msg":"connected"}))
             log.info("Sent hello payload.")
         except Exception as e:
             log.error(f"Failed to send initial payload: {e!r}")
 
     async def _on_message(self, message: str):
-        """Handle incoming messages."""
         try:
             data = json.loads(message)
         except json.JSONDecodeError:
@@ -73,10 +50,7 @@ class ExchangeWS:
         log.debug(f"Message: {data}")
 
     async def close(self):
-        """Request graceful shutdown."""
         self._stop.set()
         if self._ws:
-            try:
-                await self._ws.close()
-            except Exception:
-                pass
+            try: await self._ws.close()
+            except Exception: pass
