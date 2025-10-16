@@ -3,13 +3,12 @@ from fastapi import FastAPI, Request, Response
 import uvicorn
 from datetime import datetime, time
 from zoneinfo import ZoneInfo
+from config import settings
+from alert_router import AlertRouter
+from exchange_ws import WSRunner
+from mexc_poll import run_mexc, MEXCPoller
+from news import news_mod
 
-from .config import settings
-from .alert_router import AlertRouter
-from .exchange_ws import WSRunner
-from .mexc_poll import run_mexc
-from .mexc_poll import MEXCPoller
-from . import news as news_mod
 
 app = FastAPI()
 router = AlertRouter(settings.telegram_bot_token, settings.telegram_chat_id, settings.duplicate_cooldown_seconds)
