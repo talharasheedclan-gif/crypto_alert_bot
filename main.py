@@ -1,138 +1,98 @@
-# main.py — production-safe entrypoint
-
-import os
 import asyncio
-from datetime import datetime, time
-from zoneinfo import ZoneInfo
-
-from fastapi import FastAPI, Request
-
+import pandas as pd
+from datetime import datetime, timezone
+from binance import AsyncClient, BinanceSocketManager
+from indicators import rsi, ema, vwap, liquidity_sweep
 from config import settings
 from alert_router import AlertRouter
-from exchange_ws import WSRunner
-from mexc_poll import run_mexc
-import news  # must define: async def run_news_cycle(router)
 
-# ------------------------------------------------------------
-# FastAPI app + alert router
-# ------------------------------------------------------------
+class WSRunner:
+    def _init_(self, router: AlertRouter):
+        self.router = router
 
-app = FastAPI()
+    async def run(self):
+        if not settings.use_binance_ws:
+            return
 
-# If your AlertRouter takes (token, chat_id), keep as-is.
-# If it takes no args, change to: router = AlertRouter()
-router = AlertRouter(
-    settings.telegram_bot_token,
-    settings.telegram_chat_id,
-)
+        client = await AsyncClient.create()
+        bsm = BinanceSocketManager(client)
 
-# ------------------------------------------------------------
-# Routes
-# ------------------------------------------------------------
+        streams = []
+        for c in [s.strip().upper() for s in settings.coins]:
+            streams.append(f"{c}{settings.base}@kline_1m".lower())
 
-@app.get("/")
-async def root():
-    return {"status": "Crypto bot is running"}
+        ms = bsm.multiplex_socket(streams)
+        cache = {}
 
-@app.get("/health")
-async def health():
-    return {"status": "ok"}
+        # Keep socket alive
+        while True:
+            try:
+                async with ms as stream:
+                    async for msg in stream:
+                        data = msg.get("data", {})
+                        k = data.get("k", {})
+                        if not k:
+                            continue
 
-@app.get("/test")
-async def test():
-    await router.send("Test", "Hello from the bot!", key="test")
-    return {"ok": True}
+                        symbol = k.get("s")  # e.g. BTCUSDT
+                        is_closed = k.get("x")
+                        o = float(k.get("o"))
+                        h = float(k.get("h"))
+                        l = float(k.get("l"))
+                        c = float(k.get("c"))
+                        v = float(k.get("v"))
+                        ts = datetime.fromtimestamp(k.get("t") / 1000, tz=timezone.utc)
 
-@app.post("/tvhook")
-async def tvhook(request: Request):
-    """
-    TradingView webhook example payload:
-    {
-      "title": "BTC Breakout",
-      "message": "Long above 125k",
-      "key": "tv-btc"
-    }
-    """
-    data = await request.json()
-    title = str(data.get("title", "TradingView Alert"))
-    message = str(data.get("message", data))
-    key = str(data.get("key", "tv-default"))
-    await router.send(title, message, key=key)
-    return {"ok": True}
+                        df = cache.get(symbol)
+                        if df is None:
+                            df = pd.DataFrame(columns=["open", "high", "low", "close", "volume"])
 
-# ------------------------------------------------------------
-# Background tasks
-# ------------------------------------------------------------
+                        df.loc[ts] = {"open": o, "high": h, "low": l, "close": c, "volume": v}
 
-async def heartbeat():
-    """Periodic ping so you know the bot is alive."""
-    while True:
-        try:
-            await router.send("Heartbeat", "Crypto bot running — OK ✅", key="heartbeat")
-        except Exception as e:
-            print("Heartbeat error:", e)
-        await asyncio.sleep(60)
+                        if len(df) > 500:
+                            df = df.iloc[-500:]
 
-def _parse_hhmm(s: str) -> time:
-    h, m = [int(x) for x in s.split(":")]
-    return time(h, m)
+                        cache[symbol] = df
 
-def _within_session(now_t: time, start: str, end: str) -> bool:
-    s = _parse_hhmm(start)
-    e = _parse_hhmm(end)
-    return s <= now_t <= e
+                        if is_closed and len(df) > 30:
+                            close = df["close"]
+                            high = df["high"]
+                            low = df["low"]
+                            vol = df["volume"]
 
-async def scheduler():
-    """
-    Runs your news/task cycle:
-      - every settings.scheduler_news_seconds seconds (default 900 / 15m)
-      - if settings.enable_session_filter is true, only inside London/NY windows
-    """
-    tz = ZoneInfo(settings.timezone)
-    interval = int(getattr(settings, "scheduler_news_seconds", 900))
-    use_sessions = bool(getattr(settings, "enable_session_filter", False))
+                            rs = rsi(close, settings.rsi_period).iloc[-1]
+                            ema20 = ema(close, 20).iloc[-1]
+                            vwap_now = vwap(high, low, close, vol).iloc[-1]
+                            sh, sl = liquidity_sweep(high, low, close, lookback=5)
+                            swept_hi = bool(sh.iloc[-1])
+                            swept_lo = bool(sl.iloc[-1])
 
-    while True:
-        try:
-            if not use_sessions:
-                await news.run_news_cycle(router)
-            else:
-                now_t = datetime.now(tz).time()
-                in_london = _within_session(now_t, settings.london_start, settings.london_end)
-                in_ny     = _within_session(now_t, settings.ny_start, settings.ny_end)
-                if in_london or in_ny:
-                    await news.run_news_cycle(router)
-        except Exception as e:
-            print("scheduler error:", e)
+                            notes = [
+                                f"close={close.iloc[-1]:.2f}",
+                                f"RSI={rs:.1f}",
+                                f"EMA20={'above' if close.iloc[-1] > ema20 else 'below'}",
+                                f"VWAP={'above' if close.iloc[-1] > vwap_now else 'below'}"
+                            ]
 
-        await asyncio.sleep(interval)
+                            if swept_hi:
+                                notes.append("Liquidity sweep of prior HIGH → potential fade")
+                            if swept_lo:
+                                notes.append("Liquidity sweep of prior LOW → potential long")
 
-# ------------------------------------------------------------
-# Startup hook: launch runners
-# ------------------------------------------------------------
+                            if swept_hi or swept_lo or abs(close.iloc[-1] - ema20) / ema20 > 0.001:
+                                body = f"[{symbol}] " + ", ".join(notes)
+                                key = f"{symbol}-sweep" if (swept_hi or swept_lo) else f"{symbol}-indicators"
+                                await self.router.send("Binance 1m Signal", body, key)
 
-@app.on_event("startup")
-async def startup():
-    # Binance WebSocket runner
-    asyncio.create_task(WSRunner(router).run())
+            except Exception as e:
+                print(f"⚠ WebSocket error: {e}, reconnecting in 5s...")
+                await asyncio.sleep(5)
+                continue
 
-    # MEXC poller (guarded by ENABLE_MEXC)
-    if bool(getattr(settings, "enable_mexc", True)):
-        asyncio.create_task(run_mexc(router))
-
-    # Support tasks
-    asyncio.create_task(heartbeat())
-    asyncio.create_task(scheduler())
-
-# ------------------------------------------------------------
-# Local run (when not using uvicorn CLI)
-# ------------------------------------------------------------
-
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(
-        "main:app",
-        host="0.0.0.0",
-        port=int(os.getenv("PORT", "8080")),
-        reload=False,
-    )
+            finally:
+                # Always close Binance client before reconnect
+                if client is not None:
+                    try:
+                        await client.close_connection()
+                    except Exception:
+                        pass
