@@ -2,7 +2,7 @@ import asyncio, ccxt, pandas as pd
 from datetime import datetime, timezone
 from config import settings
 from indicators import rsi, ema, vwap, detect_sweep, vwap_deviation_bands
-from .alert_router import AlertRouter
+from alert_router import AlertRouter
 
 def _reset_index_for_vwap(index: pd.DatetimeIndex, mode: str = "DAILY"):
     if mode.upper() == "NONE":
