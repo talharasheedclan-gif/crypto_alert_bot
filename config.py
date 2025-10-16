@@ -42,16 +42,16 @@ class Settings(BaseModel):
 settings = Settings()
 
 
-    # MEXC
-    enable_mexc: bool = os.getenv("ENABLE_MEXC", "false").lower() == "true"
-    mexc_symbols: list[str] = [s.strip() for s in os.getenv("MEXC_SYMBOLS", "BTC/USDT,ETH/USDT").split(",")]
-    mexc_poll_interval_sec: int = int(os.getenv("MEXC_POLL_INTERVAL_SEC", "30"))
+# MEXC
+  enable_mexc: bool = os.getenv("ENABLE_MEXC", "false").lower() == "true"
+  mexc_symbols: list[str] = [s.strip() for s in os.getenv("MEXC_SYMBOLS", "BTC/USDT,ETH/USDT").split(",")]
+  mexc_poll_interval_sec: int = int(os.getenv("MEXC_POLL_INTERVAL_SEC", "30"))
 
-    # VWAP / Sweeps
-    vwap_reset: str = os.getenv("VWAP_RESET", "DAILY")
-    sweep_lookback: int = int(os.getenv("SWEEP_LOOKBACK", "20"))
+# VWAP / Sweeps
+vwap_reset: str = os.getenv("VWAP_RESET", "DAILY")
+sweep_lookback: int = int(os.getenv("SWEEP_LOOKBACK", "20"))
 
-    scheduler_news_seconds: int = int(os.getenv("SCHEDULER_NEWS_SECONDS", "900"))
+scheduler_news_seconds: int = int(os.getenv("SCHEDULER_NEWS_SECONDS", "900"))
 
     # Heartbeat
     heartbeat_seconds: int = int(os.getenv("HEARTBEAT_SECONDS", "7200"))
