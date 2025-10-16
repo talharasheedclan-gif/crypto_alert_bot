@@ -73,6 +73,6 @@ async def run_mexc(router: AlertRouter):
     if settings.binance_key and settings.binance_secret:
         pass  # not used here
     tasks = []
-    for sym in settings.mexc_symbols:
+    for sym in settings.coins:
         tasks.append(asyncio.create_task(poll_symbol(ex, sym, router)))
     await asyncio.gather(*tasks)
