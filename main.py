@@ -50,7 +50,7 @@ async def scheduler():
             s = time.fromisoformat(start); e = time.fromisoformat(end)
             return s <= now <= e
         if (not settings.enable_session_filter) or within(settings.london_start, settings.london_end) or within(settings.ny_start, settings.ny_end):
-            news_mod.run_news_cycle(router)
+            news.run_news_cycle(router)
         await asyncio.sleep(settings.scheduler_news_seconds)  # 15m
 
 @app.on_event("startup")
