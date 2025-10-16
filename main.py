@@ -7,7 +7,7 @@ from config import settings
 from alert_router import AlertRouter
 from exchange_ws import WSRunner
 from mexc_poll import run_mexc
-from news import news_mod
+import news
 
 
 app = FastAPI()
