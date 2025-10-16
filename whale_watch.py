@@ -1,6 +1,6 @@
 import time, requests
-from .config import settings
-from .alert_router import AlertRouter
+from config import settings
+from alert_router import AlertRouter
 
 # Simple example: monitor large ERC20 transfers via Etherscan (requires API key).
 # For production, consider dedicated providers or websockets.
