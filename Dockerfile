@@ -1,13 +1,23 @@
-# Python slim image
+# Use official Python image
 FROM python:3.11-slim
 
+# Set working directory
 WORKDIR /app
-COPY requirements.txt /app/requirements.txt
+
+# Copy dependency list first
+COPY requirements.txt .
+
+# Install dependencies
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY src /app/src
-COPY tradingview /app/tradingview
+# Copy all project files into /app
+COPY . .
 
+# Set environment variables
 ENV PYTHONUNBUFFERED=1
-EXPOSE 8080
-CMD ["python", "-m", "src.main"]
+
+# Expose port
+EXPOSE 8000
+
+# Start the bot
+CMD ["python", "main.py"]
