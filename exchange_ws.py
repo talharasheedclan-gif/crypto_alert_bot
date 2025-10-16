@@ -1,5 +1,6 @@
-# exchange_ws.py
-import asyncio, json, logging
+import asyncio
+import json
+import logging
 from typing import Optional
 import websockets
 
@@ -15,6 +16,7 @@ class ExchangeWS:
         self.connected: bool = False
 
     async def run(self):
+        """Main loop: connect, consume, and auto-reconnect on errors."""
         while not self._stop.is_set():
             try:
                 log.info(f"Connecting to {self.url} ...")
@@ -35,9 +37,11 @@ class ExchangeWS:
                 self._ws = None
 
     async def _on_open(self):
-        if self._ws is None: return
+        if self._ws is None:
+            return
+        hello = {"type": "hello", "msg": "connected"}
         try:
-            await self._ws.send(json.dumps({"type":"hello","msg":"connected"}))
+            await self._ws.send(json.dumps(hello))
             log.info("Sent hello payload.")
         except Exception as e:
             log.error(f"Failed to send initial payload: {e!r}")
@@ -52,5 +56,7 @@ class ExchangeWS:
     async def close(self):
         self._stop.set()
         if self._ws:
-            try: await self._ws.close()
-            except Exception: pass
+            try:
+                await self._ws.close()
+            except Exception:
+                pass
