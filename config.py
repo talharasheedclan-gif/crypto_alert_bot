@@ -56,6 +56,6 @@ scheduler_news_seconds: int = int(os.getenv("SCHEDULER_NEWS_SECONDS", "900"))
 # Heartbeat
 heartbeat_seconds: int = int(os.getenv("HEARTBEAT_SECONDS", "7200"))
 
-    # VWAP bands
-    enable_vwap_band_alerts: bool = os.getenv("ENABLE_VWAP_BAND_ALERTS", "true").lower() == "true"
-    vwap_band_window: int = int(os.getenv("VWAP_BAND_WINDOW", "50"))
+# VWAP bands
+enable_vwap_band_alerts: bool = os.getenv("ENABLE_VWAP_BAND_ALERTS", "true").lower() == "true"
+vwap_band_window: int = int(os.getenv("VWAP_BAND_WINDOW", "50"))
