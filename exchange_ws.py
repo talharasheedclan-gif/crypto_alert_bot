@@ -1,10 +1,8 @@
 import asyncio
 import pandas as pd
 from datetime import datetime, timezone
-
 from binance import AsyncClient, BinanceSocketManager
-
-from indicators import rsi, ema, vwap, liquidity_sweep  # keep only what you use
+from indicators import rsi, ema, vwap, liquidity_sweep
 from config import settings
 from alert_router import AlertRouter
 
@@ -17,16 +15,13 @@ class WSRunner:
         if not settings.use_binance_ws:
             return
 
-        # build streams once (e.g., "btcusdt@kline_1m")
-        streams: list[str] = []
-        for s in [c.strip().upper() for c in settings.coins]:
-            streams.append(f"{s}{settings.base}@kline_1m".lower())
+        # Build symbol streams
+        streams = [f"{s.strip().upper()}{settings.base}@kline_1m".lower() for s in settings.coins]
+        cache = {}
 
-        cache: dict[str, pd.DataFrame] = {}
-
-        # reconnect loop
+        # Keep reconnecting if socket drops
         while True:
-            client: AsyncClient | None = None
+            client = None
             try:
                 client = await AsyncClient.create()
                 bsm = BinanceSocketManager(client)
@@ -38,8 +33,8 @@ class WSRunner:
                     if not k:
                         continue
 
-                    symbol = k.get("s")              # BTCUSDT
-                    is_closed = k.get("x")           # candle closed?
+                    symbol = k.get("s")
+                    is_closed = k.get("x")
                     o = float(k.get("o", 0))
                     h = float(k.get("h", 0))
                     l = float(k.get("l", 0))
@@ -50,6 +45,7 @@ class WSRunner:
                     df = cache.get(symbol)
                     if df is None:
                         df = pd.DataFrame(columns=["open", "high", "low", "close", "volume"])
+
                     df.loc[ts] = {"open": o, "high": h, "low": l, "close": c, "volume": v}
                     if len(df) > 500:
                         df = df.iloc[-500:]
@@ -61,18 +57,19 @@ class WSRunner:
                         low = df["low"]
                         vol = df["volume"]
 
-                        rs_val = rsi(close, settings.rsi_period).iloc[-1]
+                        rsi_val = rsi(close, settings.rsi_period).iloc[-1]
                         ema20 = ema(close, 20).iloc[-1]
                         vwap_now = vwap(high, low, close, vol).iloc[-1]
                         sh, sl = liquidity_sweep(high, low, close, vol, lookback=5)
                         swept_hi = bool(sh.iloc[-1])
                         swept_lo = bool(sl.iloc[-1])
 
-                        notes: list[str] = []
-                        notes.append(f"close={close.iloc[-1]:.2f}")
-                        notes.append(f"RSI={rs_val:.1f}")
-                        notes.append(f"EMA20={'above' if close.iloc[-1] > ema20 else 'below'}")
-                        notes.append(f"VWAP={'above' if close.iloc[-1] > vwap_now else 'below'}")
+                        notes = [
+                            f"close={close.iloc[-1]:.2f}",
+                            f"RSI={rsi_val:.1f}",
+                            f"EMA20={'above' if close.iloc[-1] > ema20 else 'below'}",
+                            f"VWAP={'above' if close.iloc[-1] > vwap_now else 'below'}"
+                        ]
                         if swept_hi:
                             notes.append("Liquidity sweep of prior HIGH → potential fade")
                         if swept_lo:
@@ -84,7 +81,7 @@ class WSRunner:
                             await self.router.send("Binance 1m Signal", body, key=key)
 
             except Exception as e:
-                print(f"⚠ WebSocket error: {e}. Reconnecting in 5s…")
+                print(f"⚠ WebSocket error: {e}. Reconnecting in 5s...")
                 await asyncio.sleep(5)
             finally:
                 if client is not None:
