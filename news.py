@@ -1,6 +1,6 @@
 import os, time, requests
-from .config import settings
-from .alert_router import AlertRouter
+from config import settings
+from alert_router import AlertRouter
 
 NEWS_SOURCES = [
     ("newsapi", "https://newsapi.org/v2/everything"),  # needs NEWSAPI_KEY
