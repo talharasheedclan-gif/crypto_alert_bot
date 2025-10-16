@@ -1,91 +1,86 @@
 import asyncio
-import pandas as pd
-from datetime import datetime, timezone
-from binance import AsyncClient, BinanceSocketManager
-from indicators import rsi, ema, vwap, liquidity_sweep
-from config import settings
-from alert_router import AlertRouter
+import json
+import logging
+from typing import Optional
 
+import websockets
 
-class WSRunner:
-    def _init_(self, router: AlertRouter):
-        self.router = router
+log = logging.getLogger("exchange_ws")
+
+class ExchangeWS:
+    def _init_(self, url: str, ping_interval: float = 20.0, reconnect_delay: float = 5.0):
+        self.url = url
+        self.ping_interval = ping_interval
+        self.reconnect_delay = reconnect_delay
+        self._stop = asyncio.Event()
+        self._ws: Optional[websockets.WebSocketClientProtocol] = None
+        self.connected: bool = False
 
     async def run(self):
-        if not settings.use_binance_ws:
-            return
-
-        # Build symbol streams
-        streams = [f"{s.strip().upper()}{settings.base}@kline_1m".lower() for s in settings.coins]
-        cache = {}
-
-        # Keep reconnecting if socket drops
-        while True:
-            client = None
+        """Main loop: connect, consume, and auto-reconnect on errors."""
+        while not self._stop.is_set():
             try:
-                client = await AsyncClient.create()
-                bsm = BinanceSocketManager(client)
-                ms = bsm.multiplex_socket(streams)
+                log.info(f"Connecting to {self.url} ...")
+                async with websockets.connect(self.url, ping_interval=self.ping_interval) as ws:
+                    self._ws = ws
+                    self.connected = True
+                    log.info("WebSocket connected.")
 
-                async for msg in ms:
-                    data = msg.get("data", {})
-                    k = data.get("k", {})
-                    if not k:
-                        continue
+                    # Example: send a hello message; replace with your exchange subscribe payload
+                    await self._on_open()
 
-                    symbol = k.get("s")
-                    is_closed = k.get("x")
-                    o = float(k.get("o", 0))
-                    h = float(k.get("h", 0))
-                    l = float(k.get("l", 0))
-                    c = float(k.get("c", 0))
-                    v = float(k.get("v", 0))
-                    ts = datetime.fromtimestamp(k.get("t", 0) / 1000, tz=timezone.utc)
-
-                    df = cache.get(symbol)
-                    if df is None:
-                        df = pd.DataFrame(columns=["open", "high", "low", "close", "volume"])
-
-                    df.loc[ts] = {"open": o, "high": h, "low": l, "close": c, "volume": v}
-                    if len(df) > 500:
-                        df = df.iloc[-500:]
-                    cache[symbol] = df
-
-                    if is_closed and len(df) > 30:
-                        close = df["close"]
-                        high = df["high"]
-                        low = df["low"]
-                        vol = df["volume"]
-
-                        rsi_val = rsi(close, settings.rsi_period).iloc[-1]
-                        ema20 = ema(close, 20).iloc[-1]
-                        vwap_now = vwap(high, low, close, vol).iloc[-1]
-                        sh, sl = liquidity_sweep(high, low, close, vol, lookback=5)
-                        swept_hi = bool(sh.iloc[-1])
-                        swept_lo = bool(sl.iloc[-1])
-
-                        notes = [
-                            f"close={close.iloc[-1]:.2f}",
-                            f"RSI={rsi_val:.1f}",
-                            f"EMA20={'above' if close.iloc[-1] > ema20 else 'below'}",
-                            f"VWAP={'above' if close.iloc[-1] > vwap_now else 'below'}"
-                        ]
-                        if swept_hi:
-                            notes.append("Liquidity sweep of prior HIGH → potential fade")
-                        if swept_lo:
-                            notes.append("Liquidity sweep of prior LOW → potential long")
-
-                        if swept_hi or swept_lo or abs(close.iloc[-1] - ema20) / max(ema20, 1e-9) > 0.001:
-                            body = f"{symbol} | " + ", ".join(notes)
-                            key = f"{symbol}-sweep" if (swept_hi or swept_lo) else f"{symbol}-indicators"
-                            await self.router.send("Binance 1m Signal", body, key=key)
-
-            except Exception as e:
-                print(f"⚠ WebSocket error: {e}. Reconnecting in 5s...")
-                await asyncio.sleep(5)
-            finally:
-                if client is not None:
+                    consumer = asyncio.create_task(self._consume(), name="ws-consumer")
+                    await self._stop.wait()  # wait until close requested
+                    consumer.cancel()
                     try:
-                        await client.close_connection()
-                    except Exception:
+                        await consumer
+                    except asyncio.CancelledError:
                         pass
+            except (OSError, websockets.WebSocketException) as e:
+                self.connected = False
+                log.warning(f"WS error: {e!r}. Reconnecting in {self.reconnect_delay}s...")
+                await asyncio.sleep(self.reconnect_delay)
+            finally:
+                self.connected = False
+                self._ws = None
+
+    async def _consume(self):
+        """Receive messages and dispatch."""
+        assert self._ws is not None
+        try:
+            async for message in self._ws:
+                await self._on_message(message)
+        except asyncio.CancelledError:
+            raise
+        except Exception as e:
+            log.error(f"Consumer crashed: {e!r}")
+            # Let outer loop handle reconnect
+
+    async def _on_open(self):
+        """Called after connect. Customize subscription here."""
+        if self._ws is None:
+            return
+        hello = {"type": "hello", "msg": "connected"}
+        try:
+            await self._ws.send(json.dumps(hello))
+            log.info("Sent hello payload.")
+        except Exception as e:
+            log.error(f"Failed to send initial payload: {e!r}")
+
+    async def _on_message(self, message: str):
+        """Handle incoming messages."""
+        # Replace with your exchange message parsing
+        try:
+            data = json.loads(message)
+        except json.JSONDecodeError:
+            data = {"raw": message}
+        log.debug(f"Message: {data}")
+
+    async def close(self):
+        """Request graceful shutdown."""
+        self._stop.set()
+        if self._ws:
+            try:
+                await self._ws.close()
+            except Exception:
+                pass
