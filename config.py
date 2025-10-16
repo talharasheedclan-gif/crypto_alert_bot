@@ -43,9 +43,9 @@ settings = Settings()
 
 
 # MEXC
-  enable_mexc: bool = os.getenv("ENABLE_MEXC", "false").lower() == "true"
-  mexc_symbols: list[str] = [s.strip() for s in os.getenv("MEXC_SYMBOLS", "BTC/USDT,ETH/USDT").split(",")]
-  mexc_poll_interval_sec: int = int(os.getenv("MEXC_POLL_INTERVAL_SEC", "30"))
+enable_mexc: bool = os.getenv("ENABLE_MEXC", "false").lower() == "true"
+mexc_symbols: list[str] = [s.strip() for s in os.getenv("MEXC_SYMBOLS", "BTC/USDT,ETH/USDT").split(",")]
+mexc_poll_interval_sec: int = int(os.getenv("MEXC_POLL_INTERVAL_SEC", "30"))
 
 # VWAP / Sweeps
 vwap_reset: str = os.getenv("VWAP_RESET", "DAILY")
