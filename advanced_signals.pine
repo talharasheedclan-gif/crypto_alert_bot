@@ -1,0 +1,48 @@
+// tradingview/advanced_signals.pine
+//@version=5
+indicator("Advanced Signals (VWAP + Sweeps + TV -> Webhook)", overlay=true)
+
+lenEMA = input.int(20, "EMA Length")
+rsiLen = input.int(14, "RSI Length")
+rsiOB = input.float(70.0, "RSI Overbought")
+rsiOS = input.float(30.0, "RSI Oversold")
+sweepLookback = input.int(20, "Sweep Lookback")
+
+ema20 = ta.ema(close, lenEMA)
+r = ta.rsi(close, rsiLen)
+vwap_val = ta.vwap(hlc3)
+
+// Sweep logic
+prevHigh = ta.highest(high[1], sweepLookback)
+prevLow  = ta.lowest(low[1], sweepLookback)
+highSweep = (high > prevHigh) and (close < prevHigh)
+lowSweep  = (low < prevLow) and (close > prevLow)
+
+longSignal  = ta.crossover(close, ema20) and r < rsiOB
+shortSignal = ta.crossunder(close, ema20) and r > rsiOS
+
+plot(ema20, "EMA20", color=color.orange, linewidth=2)
+plot(vwap_val, "VWAP", color=color.new(color.blue, 0), linewidth=2)
+plotshape(longSignal,  title="Long",  style=shape.labelup,   text="LONG",  color=color.new(color.green, 0))
+plotshape(shortSignal, title="Short", style=shape.labeldown, text="SHORT", color=color.new(color.red, 0))
+
+plotshape(highSweep, title="High Sweep", style=shape.triangledown, location=location.abovebar, color=color.new(color.red, 0), size=size.tiny, text="HS")
+plotshape(lowSweep,  title="Low Sweep",  style=shape.triangleup,   location=location.belowbar, color=color.new(color.green, 0), size=size.tiny, text="LS")
+
+// Webhook JSON
+jsonLong  = '{{"title":"TV Long","message":"{{ticker}} LONG at {{close}} (EMA20 cross, RSI={{r}})","key":"tv-{{ticker}}-long"}}'
+jsonShort = '{{"title":"TV Short","message":"{{ticker}} SHORT at {{close}} (EMA20 cross, RSI={{r}})","key":"tv-{{ticker}}-short"}}'
+jsonHS    = '{{"title":"High Sweep","message":"{{ticker}} High Sweep at {{close}} (took prior high, closed back in)","key":"tv-{{ticker}}-hs"}}'
+jsonLS    = '{{"title":"Low Sweep","message":"{{ticker}} Low Sweep at {{close}} (took prior low, closed back in)","key":"tv-{{ticker}}-ls"}}'
+
+// === VWAP deviation bands (chart overlay) ===
+bandLen = input.int(50, "VWAP Band Window")
+dev = ta.stdev(close - vwap_val, bandLen)
+p1 = vwap_val + dev
+m1 = vwap_val - dev
+p2 = vwap_val + 2*dev
+m2 = vwap_val - 2*dev
+plot(p1, "VWAP +1σ", color=color.new(color.blue, 60))
+plot(m1, "VWAP -1σ", color=color.new(color.blue, 60))
+plot(p2, "VWAP +2σ", color=color.new(color.purple, 60))
+plot(m2, "VWAP -2σ", color=color.new(color.purple, 60))
