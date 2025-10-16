@@ -4,7 +4,7 @@ import websockets
 
 log = logging.getLogger("ws_client")
 
-class WSClient:
+class ExchangeWS:
     def _init_(self, url: str, ping_interval: float = 20.0, reconnect_delay: float = 5.0):
         self.url = url
         self.ping_interval = ping_interval
