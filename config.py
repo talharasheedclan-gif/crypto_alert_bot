@@ -15,9 +15,17 @@ class Settings(BaseModel):
     coins: list[str] = os.getenv("COINS", "BTC,ETH").split(",")
     base: str = os.getenv("BASE_CURRENCY", "USDT")
     timezone: str = os.getenv("TIMEZONE", "Asia/Dubai")
-
     duplicate_cooldown_seconds: int = int(os.getenv("DUPLICATE_COOLDOWN_SECONDS", "900"))
+    # Added for scheduler + MEXC control
+    enable_mexc: bool = os.getenv("ENABLE_MEXC", "true").lower() == "true"
+    scheduler_news_seconds: int = int(os.getenv("SCHEDULER_NEWS_SECONDS", "900"))
 
+    # Optional session-based scheduling times
+    london_start: str = os.getenv("LONDON_START", "07:00")
+    london_end: str = os.getenv("LONDON_END", "10:00")
+    ny_start: str = os.getenv("NY_START", "12:30")
+    ny_end: str = os.getenv("NY_END", "15:30")
+    
     # Rules
     price_alerts: list[str] = os.getenv("PRICE_ALERTS", "").split(",") if os.getenv("PRICE_ALERTS") else []
     vol_lookback_min: int = int(os.getenv("VOLUME_SPIKE_LOOKBACK_MIN", "60"))
