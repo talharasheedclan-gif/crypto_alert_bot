@@ -18,7 +18,7 @@ class WSRunner:
         for c in [s.strip().upper() for s in settings.coins]:
             streams.append(f"{c}{settings.base}@kline_1m".lower())
         ms = bsm.multiplex_socket(streams)
-        async with ms as stream:
+        async for msg in ms:
             cache = {}
             async for msg in stream:
                 data = msg.get('data', {})
