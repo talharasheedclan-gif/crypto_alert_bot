@@ -2,7 +2,6 @@ import asyncio
 import json
 import logging
 from typing import Optional
-
 import websockets
 
 log = logging.getLogger("exchange_ws")
@@ -26,11 +25,10 @@ class ExchangeWS:
                     self.connected = True
                     log.info("WebSocket connected.")
 
-                    # Example: send a hello message; replace with your exchange subscribe payload
                     await self._on_open()
 
                     consumer = asyncio.create_task(self._consume(), name="ws-consumer")
-                    await self._stop.wait()  # wait until close requested
+                    await self._stop.wait()
                     consumer.cancel()
                     try:
                         await consumer
@@ -54,7 +52,6 @@ class ExchangeWS:
             raise
         except Exception as e:
             log.error(f"Consumer crashed: {e!r}")
-            # Let outer loop handle reconnect
 
     async def _on_open(self):
         """Called after connect. Customize subscription here."""
@@ -69,7 +66,6 @@ class ExchangeWS:
 
     async def _on_message(self, message: str):
         """Handle incoming messages."""
-        # Replace with your exchange message parsing
         try:
             data = json.loads(message)
         except json.JSONDecodeError:
